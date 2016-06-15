@@ -38,6 +38,11 @@ mod_tape.test('resolverForIpOrDomain: bad arguments', function (t) {
 	t.end();
 });
 
+/*
+ * parseIpOrDomain(): this is the lowest-level function.  It's responsible for
+ * parsing the input string and determining what kind of Resolver to create.
+ */
+
 mod_tape.test('parseIpOrDomain: ipv4', function (t) {
 	var result;
 
@@ -48,7 +53,6 @@ mod_tape.test('parseIpOrDomain: ipv4', function (t) {
 	t.deepEqual(result.config, {
 	    'backends': [ { 'address': '127.0.0.1', 'port': undefined } ]
 	});
-
 	result = mod_resolver.parseIpOrDomain('127.0.0.1:1234');
 	t.ok(!(result instanceof Error));
 	t.equal(result.kind, 'static');
@@ -102,6 +106,77 @@ mod_tape.test('parseIpOrDomain: hostname', function (t) {
 
 	t.end();
 });
+
+/*
+ * configForIpOrDomain: takes the result of parseIpOrDomain() and merges the
+ * user-provided configuration.
+ */
+
+mod_tape.test('configForIpOrDomain: static IP', function (t) {
+	var result;
+
+	/*
+	 * For static resolvers, there's no additional configuration.
+	 */
+	result = mod_resolver.configForIpOrDomain({
+	    'input': '127.0.0.1:2020'
+	});
+	t.ok(!(result instanceof Error));
+	t.equal(result.kind, 'static');
+	t.deepEqual(result.config, {
+	    'backends': [ { 'address': '127.0.0.1', 'port': 2020 } ]
+	});
+	t.deepEqual(result.mergedConfig, result.config);
+
+	/*
+	 * With DNS-based resolvers, additional properties are typically
+	 * specified, but the port provided in the input should override the
+	 * default port.
+	 */
+	result = mod_resolver.configForIpOrDomain({
+	    'input': '1.moray:4567',
+	    'resolverConfig': {
+		'defaultPort': 1234,
+		'service': '_moray_.tcp',
+		'resolvers': [ '192.168.0.1', '192.168.0.3' ]
+	    }
+	});
+	t.equal(result.kind, 'dns');
+	t.deepEqual(result.mergedConfig, {
+	    'domain': '1.moray',
+	    'defaultPort': 4567,
+	    'service': '_moray_.tcp',
+	    'resolvers': [ '192.168.0.1', '192.168.0.3' ]
+	});
+
+	/*
+	 * If there's no port in the input, then we should use the default port.
+	 */
+	result = mod_resolver.configForIpOrDomain({
+	    'input': '1.moray',
+	    'resolverConfig': {
+		'defaultPort': 1234,
+		'service': '_moray_.tcp',
+		'resolvers': [ '192.168.0.1', '192.168.0.3' ]
+	    }
+	});
+	t.equal(result.kind, 'dns');
+	t.deepEqual(result.mergedConfig, {
+	    'domain': '1.moray',
+	    'defaultPort': 1234,
+	    'service': '_moray_.tcp',
+	    'resolvers': [ '192.168.0.1', '192.168.0.3' ]
+	});
+
+	t.end();
+});
+
+
+/*
+ * resolverForIpOrDomain: takes the result of configForIpOrDomain and simply
+ * instantiates the resolver.  Given that we've tested everything above, there's
+ * less that needs to be checked here.
+ */
 
 mod_tape.test('resolverForIpOrDomain: static IP', function (t) {
 	var result, list;
